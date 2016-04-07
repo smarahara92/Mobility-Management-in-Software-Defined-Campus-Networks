@@ -1,0 +1,702 @@
+\documentclass[10pt,a4paper,titlepage]{report}
+\usepackage[latin1]{inputenc}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{makeidx}
+\usepackage{graphicx}
+\usepackage[]{algorithm2e}
+\usepackage[]{algorithmic}
+\usepackage{scrextend}
+\usepackage{listings}
+\author{Smarahara \\ 14MCMB20}
+\title{Mobility Management in Software Defined Campus Networks}
+\begin{document}
+	\maketitle
+	\addtokomafont{labelinglabel}{\sffamily}
+	\begin{labeling}{LocalNetwork}
+		\item [Address] It represent logical and physical addresses of a system. It maintains IPv6, MAC address pair
+		\item [HostDB] It maintains the current position of each system in the network
+		\item [Switch] It is a logical representation of a switch in the network
+		\item [LocalNetwork] It has the network topology of the current network
+		\item [ICMPv6] It handles the ICMPv6 messages received at the controller
+		\item [HomeAgent] It handles IPv6 packets, which contains mobility header
+		\item [Init] It is the start point of the software
+	\end{labeling}
+
+	\renewcommand{\caption}{\textbf{def }}
+	\renewcommand{\algorithmicforall}{\textbf{foreach }}
+
+\section{HostDBEvents}
+\begin{lstlisting}[language=Python]
+interface HostDBEvents {
+
+	# Host entntry
+	######################################################################
+	# ------------------------------------------------------------------ #
+	# | IPv6 address | MAC | DPID | Portnum | Timeout | last refreshed | #
+	# ------------------------------------------------------------------ #
+	######################################################################
+	
+	# "hostentry" is a list containing values specified as above
+
+	void hostAdded(hostentry);
+	
+	void hostUpdated(updatedentry, oldentry)
+	
+	void hostremoved(hostentry)
+	
+}
+\end{lstlisting}
+
+\section{HostDB}
+\begin{lstlisting}[language=Python]
+class HostDB {
+
+  # Host_entry 
+  ######################################################################
+  # ------------------------------------------------------------------ #
+  # | IPv6 address | MAC | DPID | Portnum | Timeout | last refreshed | #
+  # ------------------------------------------------------------------ #
+  ######################################################################
+
+	# "hostentry" means list containing values as specified above
+	
+	enum index {IPV6, MAC, DPID, PORTNUM, TIMEOUT, LASTREFRESHED}
+
+	List hostentries = []	  # list of hostentry
+	
+	HostDBEvents eventhandler
+	
+	############################################################
+	# it perform searching based on searchby (index in the ho- #
+	#  st-entry) and return all entries matches with the value #
+	############################################################
+	def getHostEntries(enum index searchby, unsigned long value);
+	
+	##########################################################
+	#  it perform searching based on searchby. When it encou #
+	# ters first match it return the value based on returnby #
+	##########################################################
+	def getHostEntryValue(enum index searchby, 
+			      unsigned long value, 
+			      enum index returnby);
+	
+	
+	def addHost(unsigned long ipv6, 
+		    unsigned long mac, 
+		    unsigned long dpid, 
+		    unsigned long portnum, 
+		    unsgined long timeout);
+	
+	
+	def updateHost(enum index [] searchby, 
+		       unsigned long [] values, 
+		       unsigned long [] entryvalues);
+	
+	def removeHost(enum index searchby, unsigned long value);
+	
+	def refreshHostEntry(enum index searchby, unsigned long value);
+	
+}
+\end{lstlisting}
+
+\begin{algorithm}
+	\caption{getHostEntries(enum index searchby, unsigned long value)}
+	\begin{algorithmic}[1]
+		\STATE $entries = []$
+		\FORALL {$entry\ \textbf{in}\ hostentries$}
+			\IF {$entry[searchby] == value$}
+				\STATE $entries.append(entry)$
+			\ENDIF
+		\ENDFOR
+	\end{algorithmic}
+\end{algorithm}
+
+\newpage
+
+\begin{algorithm}
+	\caption{getHostEntryValue(enum index searchby,} \\
+	\qquad \qquad \qquad \qquad \qquad \ \ unsigned long value, \\
+	\qquad \qquad \qquad \qquad \qquad \ \ enum index returnby)
+	\begin{algorithmic}[1]
+		\FORALL{$entry\ \textbf{in}\ hostentries$}
+			\IF{$entry[searchby] == value$}
+				\RETURN $entry[returnby]$
+			\ENDIF
+		\ENDFOR
+		\RETURN $0$
+	\end{algorithmic}
+\end{algorithm}
+
+
+\begin{algorithm}
+	\caption{addHost(unsigned long ipv6,}
+		unsigned\ long\ mac,\\
+		\qquad \qquad \qquad unsigned\ long\ dpid,\\
+		\qquad \qquad \qquad unsigned\ long\ portnum,\\
+		\qquad \qquad \qquad unsgined\ long\ timeout);
+	\begin{algorithmic}[1]
+		\STATE $entry = [ipv6, mac, dpid, portnum, timeout, currenttime]$
+		\STATE $hostentries.append(entry)$
+		\STATE $eventhandler.hostAdded(entry)$
+	\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+	\caption{removeHost(enum index searchby, unsigned long value)}
+	\begin{algorithmic}[1]
+		\STATE $entries = []$
+		\FORALL {$entry\ \textbf{in}\ hostentries$}
+			\IF {$entry[searchby] == value$}
+				\STATE $eventhandler.hostRemoved(entry)$
+			\ELSE
+				\STATE $entries.append(entry)$
+			\ENDIF
+		\ENDFOR
+		\STATE $hostentries = entries$
+	\end{algorithmic}
+\end{algorithm}
+
+\newpage
+
+\begin{algorithm}
+	\caption{def updateHost(enum index [] searchby,}\\ 
+	\qquad \qquad \qquad \qquad \ \ \ unsigned long [] values,\\
+	\qquad \qquad \qquad \qquad \ \ \ unsigned long [] entryvalues)
+	\begin{algorithmic}[1]
+		\STATE $searchindex = 0$
+		\STATE $valueindex = 0$
+		\FORALL {$entry\ \textbf{in}\ hostentries$}
+			\FORALL {$sby\ \textbf{in}\ searchby$}
+				\STATE $index = 0$
+				\IF{$entry[sby] \neq searchby[index]$}
+					\STATE $\textbf{break}$
+				\ENDIF
+				\STATE $index\ +=\ 1$
+			\ENDFOR
+			\IF {$index == searchby.length$}
+				\STATE $oldentry = entry.clone()$
+				\FOR {$index = 0\ \TO\ 6$}
+					\IF {$index == searchindex$}
+						\STATE $searchindex\ +=\ 1$
+					\ELSE
+						\STATE $entry[index] = values[valueindex]$
+						\STATE $valueindex\ +=\ 1$
+					\ENDIF
+				\ENDFOR
+				\STATE $eventhandler.hostUpdated(oldentry, entry)$
+			\ENDIF
+		\ENDFOR
+	\end{algorithmic}
+\end{algorithm}
+
+\lstdefinestyle{mystyle}{
+	breakatwhitespace=false,
+	keepspaces=true	
+}
+\lstset{style=mystyle}
+
+\section{Address}
+\begin{lstlisting}[language=Python]
+class Address {
+	
+	List multicastaddresses; # list contains IPv6 multicast, 
+				 # MAC addresses pair
+	
+	List addresses;		 # list contains IPv6, MAC adresses pairs
+	
+	List defaultIPs;
+	
+	unsigned long defaultGateway;
+	
+	def addNewAddress(unsigned long ipv6, unsigned long mac);
+	
+	def addNewMulticastAddress(unsigned long ipv6, unsigned long mac);
+	
+	def removeAddress(unsigned long ipv6);
+	
+	########################################################
+	# It matches the given value against the addresses and #
+	# multicastaddresses object based on value given in va-#
+	# luetype. If it matched any address it return true    #
+	# else return false                                    #
+	########################################################
+	def matches(unsigned long value, int valuetype);
+	
+	########################################################
+	# It returns the mac address assosiated with the given #
+	# ipv6 address if it found it returns mac address else #
+	# it returns 0                                         #
+	########################################################
+	def getMAC(unsigned long ipv6);
+	
+	#########################################################
+	# It returns the ipv6 address assosiated with the given #
+	# mac address if it found it returns ipv6 address else  #
+	# it returns 0                                          #
+	#########################################################
+	def getIP(unsigned long mac);
+	
+}
+\end{lstlisting}
+
+\begin{algorithm}
+	\caption{matches(unsigned long value, int valuetype)}
+	\begin{algorithmic}[1]
+		\STATE $addrlist = None$
+		\IF {$valuetype == 0\ \AND\ value == MULTICASTIPv6ADDRESS$}
+			\STATE $addrlist = multicastaddresses$
+		\ELSE
+			\STATE $addrlist = addresses$
+		\ENDIF
+		\FOR {$addrpair\ \textbf{in}\ addrlist$}
+			\IF{$addrpair[valuetype] == value$}
+				\RETURN \TRUE
+			\ENDIF
+		\ENDFOR
+		\RETURN \FALSE
+	\end{algorithmic}
+\end{algorithm}
+
+\section{ICMPv6Handler}
+\begin{lstlisting}[language=Python]
+class ICMPv6Handler {
+
+	Address myaddress;	# Addresses are represented by the object,
+				# are considered as its own addresess
+	HostDb hosts;
+	
+	LocalNetwork network;
+	
+	def process(PacketInEvent event);
+	
+	def _handle_ICMPv6_Echo_Request(Ethernet ethpkt, 
+					unsigned long dpid, 
+					unsigned short inport);
+	
+	def _handle_ICMPv6_Neighbour_Solicitation(Ethernet ethpkt, 
+						  unsigned long dpid, 
+						  unsigned short inport);
+	
+	def isHostRechable(unsigned long targetip, 
+			   unsigned long dpid = None, 
+			   int port = None);
+
+}
+\end{lstlisting}
+
+\begin{algorithm}
+	\caption{process(PacketInEvent event)}
+	\begin{algorithmic}[1]
+		\STATE $ethpkt = event.packet$
+		\STATE $ipv6 = ethpkt.find("ipv6")$
+		\STATE $icmp = ipv6.find("icmpv6")$
+		\IF {($icmppkt.type == 128\ \OR\ icmppkt.type == 144$) \AND \\ $\ \ \ ipv6.destination\ \textbf{is}\ \textbf{not}\ IPv6\_MULTICAST\_ADDRESS$}
+			\IF{$myaddress.matches(ipv6.destination)$}
+				\STATE $event.reason = OFPP\_CONTROLLER$
+				\STATE $\_handle\_ICMPv6\_Echo\_Request(ethpkt, event.dpid, event.inport)$
+			\ENDIF
+		\ELSIF{$icmppkt.type == 133$}
+			\IF{$myaddress.matches(icmp.target)$}
+				\STATE $event.reason = OFPP\_CONTROLLER$
+				\STATE $\_handle\_ICMPv6\_Neighbour\_Solicitation(ethpkt, event.dpid, event.inport)$
+			\ENDIF
+		\ELSIF{$icmppkt.type == 144$ \\ $\ \ \ \ \ \ \ \ \ \ \ \ \ \ ipv6.destination\ \textbf{is}\ ALL\_HOME\_AGENTS\_MULTICAST\_ADDRESS$}
+			\STATE $event.reason = OFPP\_CONTROLLER$
+			\STATE $\_handle\_ICMPv6\_Echo\_Request(ethpkt, event.dpid, event.inport)$
+		\ENDIF
+	\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+	\caption{\_handle\_ICMPv6\_Echo\_Request(Ethernet ethpkt,}\\
+	\qquad \qquad \qquad \qquad \qquad \qquad \qquad \qquad unsigned long dpid,\\
+	\qquad \qquad \qquad \qquad \qquad \qquad \qquad \qquad unsigned short inport)\\
+	\begin{algorithmic}
+		\STATE $ipv6pkt = ethpkt.find("ipv6")$
+		\IF{$ipv6.destination \textbf{is} MULTICAST\_IPv6\_ADDRESS$}
+			\STATE $srcip = address.defaultPublicIP()$
+			\STATE $srcmac = address.getMAC(dstip)$
+		\ELSE
+			\STATE $srcip = ipv6pkt.destination$
+			\STATE $srcmac = ethpkt.destination$
+		\ENDIF
+		\STATE $pkt = Ethernet.createPacket(srcmac, ethpkt.source)$
+		\STATE $ipv6 = IPv6.createPacket(srcip, ipv6.source)$
+		\STATE $icmppkt = ipv6pkt.find("icmpv6")$
+		\IF{$icmppkt.type == 128\ \AND\ icmppkt.code == 0$}
+			\STATE $icmp = ICMPv6.createEchoReply(icmppkt.Identifier, icmppkt.SequenceNo)$
+		\ELSIF {$icmppkt.type == 144\ \AND\ icmppkt.code == 0$}
+			\STATE $defaultIPs = address.defaultIPs.clone().remove(srcip)$
+			\STATE $icmp = ICMPv6.createHomeAgentDiscoverReply(icmppkt.Identifier, defaultIPs)$
+		\ENDIF
+		\STATE $ipv6.data = icmp$
+		\STATE $pkt.data = ipv6$
+		\STATE $network.sendPacket(pkt,dpid, inport)$
+	\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+	\caption{\_handle\_ICMPv6\_Neighbour\_Solicitation(Ethernet ethpkt,}\\
+	\qquad \qquad \qquad \qquad \qquad \qquad \qquad \qquad \qquad \qquad unsigned long dpid,\\
+	\qquad \qquad \qquad \qquad \qquad \qquad \qquad \qquad \qquad \qquad unsigned short inport)\\
+	\begin{algorithmic}[1]
+		\STATE $ipv6pkt = ethpkt.find("ipv6")$
+		\STATE $icmppkt = ipv6pkt.find("icmpv6")$
+		\STATE $srcip = icmppkt.target()$
+		\STATE $srcmac = myaddress.getMAC(srcip)$
+		\IF {$ipv6pkt.source\ \textbf{is}\ \textbf{UNSPECIFIED}$}
+			\STATE $dstip = ALL\_NODES\_MULTICAST\_ADDRESS$
+			\STATE $dstmac = ALL\_NODES\_MULTICAST\_ETHERNET\_ADDRESS$
+		\ELSE
+			\STATE $dstip = ipv6pkt.source$
+			\STATE $dstmac = icmppkt.sourceLinkLayerAddress$
+		\ENDIF
+		\STATE $pkt = Ethernet.createPacket(srcmac, dstmac)$
+		\STATE $ipv6 = IPv6.createPacket(srcip, dstip)$
+		\STATE $ipv6.data = ICMPv6.createNeighbourAdvertisement(srcip, srcmac, flag = 'R')$
+		\STATE $pkt.data = ipv6$
+		\STATE $network.sendPacket(pkt, dpid, inport)$
+	\end{algorithmic}
+\end{algorithm}
+
+%\begin{algorithm}
+%	\caption{\_handle\_ICMPv6\_Echo\_Request(Ethernet ethpkt)}
+%	\begin{algorithmic}[1]
+%		\STATE $ipv6pkt = ethpkt.find("ipv6")$
+%		\IF{$myaddress.matches(ipv6.destination)$}
+%			\IF{$ipv6.destination \textbf{is} MULTICAST\_IPv6\_ADDRESS$}
+%				\STATE $srcip = address.defaultIP[0]$
+%				\STATE $srcmac = address.getMAC(dstip)$
+%			\ELSE 
+%				\STATE $srcip = ipv6pkt.destination$
+%				\STATE $srcmac = ethpkt.destination$
+%			\ENDIF
+%			\STATE $pkt = Ethernet.createPacket(srcmac, ethpkt.source)$
+%			\STATE $ipv6 = IPv6.createPacket(srcip, ipv6.source)$
+%			\STATE $icmppkt = ipv6pkt.find("icmpv6")$
+%			\STATE $hostentries = hosts.getHostentries(IPV6, ipv6.destinationIP)$
+%			\IF{$icmppkt.type == 128\ \AND\ icmppkt.code == 0$}
+%				\STATE $icmp = ICMPv6.createEchoReply(icmppkt.Identifier, icmppkt.SequenceNo)$
+%			\ELSIF {$icmppkt.type == 144\ \AND\ icmppkt.code == 0$}
+%				\STATE $defaultIPs = address.defaultIPs.clone().remove(srcip)$
+%				\STATE $icmp = ICMPv6.createHomeAgentDiscoverReply(icmppkt.Identifier, defaultIPs)$
+%			\ENDIF
+%			\STATE $ipv6.data = icmp$
+%			\STATE $pkt.data = ipv6$
+%			\STATE $network.sendPacket(pkt, hostentries[0][DPID], hostentries[0][PORTNUM])$
+%		\ENDIF
+%	\end{algorithmic}
+%\end{algorithm}
+
+\begin{algorithm}
+	\caption{isHostRechable(unsigned long targetip,} \\
+	\qquad \qquad \qquad \qquad \ \ \ unsigned long dpid = None, \\
+	\qquad \qquad \qquad \qquad \ \ \ int port = None)
+	\begin{algorithmic}[1]
+		\STATE $srcmac = myaddress.getMAC(myaddress.defaultIP)$
+		\STATE $hostentries = hosts.getHostEntries(MAC, srcmac)$
+		\STATE $hostentry = \textbf{None}$
+		\STATE $srcip = \textbf{None}$
+		\FORALL {$entry\ \textbf{in}\ hostentries$}
+			\IF {$entry[IP]\ \textbf{is}\ type(targetip)$}
+				\STATE $hostentry = entry$
+				\STATE $srcip = entry[IP]$
+				\STATE $\textbf{break}$
+			\ENDIF
+		\ENDFOR
+		\IF {$dpid\ \textbf{is}\ \textbf{None}$}
+			\STATE $dpid = hostentry[DPID]$
+			\STATE $port = hostentry[PORTNUM]$
+		\ENDIF
+		\IF {$srcip\ \textbf{is}\ \NOT\ \textbf{None}$}
+			\STATE $waittime = 1$
+			\STATE $ethpkt = Ethernet.createPacket(srcmac, ALL\_NODES\_MULTICAST\_ETHERNET\_ADDRESS)$
+			\STATE $ipv6 = IPv6.createPacket(srcip, ALL\_NODES\_MULTICAST\_ADDRESS)$
+			\FOR {$i = 1\ \TO\ 3$}
+				\STATE $currenttime = Date.getInstance()$
+				\STATE $hostentry[LASTREFRESHED] = currenttime$
+				\STATE $icmp = ICMPv6.createNeighbourSolicitation(srcmac, targetip)$
+				\STATE $ipv6.data = icmp$
+				\STATE $ethpkt.data = ipv6$
+				\STATE $network.sendPacket(ethpkt, dpid, port)$
+				\STATE $wait(waittime)$
+				\STATE $currenttime = Date.getInstance()$
+				\IF {$abs(hostentry[LASTREFRESHED] - currenttime) \leq waittime$}
+					\RETURN \TRUE
+				\ELSE
+					\STATE $waittime = waittime \times 2$
+				\ENDIF
+			\ENDFOR
+			\RETURN \FALSE
+		\ELSE
+			\RETURN \FALSE
+		\ENDIF
+		
+	\end{algorithmic}
+\end{algorithm}
+
+%\begin{algorithm}
+%	\caption{\_handle\_ICMPv6\_Neighbour\_Solicitation(Ethernet ethpkt)}
+%	\begin{algorithmic}[1]
+%		\STATE $ipv6pkt = ethpkt.find("ipv6")$
+%		\STATE $icmppkt = ipv6pkt.find("icmpv6")$
+%		\IF {$myaddress.matches(icmppkt.target)$}
+%			\STATE $srcip = icmppkt.target()$
+%			\STATE $srcmac = myaddress.getMAC(srcip)$
+%			\IF {$ipv6pkt.source\ \textbf{is}\ \textbf{UNSPECIFIED}$}
+%				\STATE $dstip = ALL\_NODES\_MULTICAST\_ADDRESS$
+%				\STATE $dstmac = ALL\_NODES\_MULTICAST\_ETHERNET\_ADDRESS$
+%			\ELSE
+%				\STATE $dstip = ipv6pkt.source$
+%				\STATE $dstmac = icmppkt.sourceLinkLayerAddress$
+%			\ENDIF
+%			\STATE $hostentryies = hosts.getHostEntries(MAC, icmppkt.sourceLinkLayerAddress)$
+%			\STATE $pkt = Ethernet.createPacket(srcmac, dstmac)$
+%			\STATE $ipv6 = IPv6.createPacket(srcip, dstip)$
+%			\STATE $ipv6.data = ICMPv6.createNeighbourAdvertisement(srcip, srcmac, flag = 'R')$
+%			\STATE $pkt.data = ipv6$
+%			\STATE $network.sendPacket(pkt, hostentries[0][DPID], hostentries[0][PORTNUM])$
+%		\ENDIF
+%	\end{algorithmic}
+%\end{algorithm}
+
+\section{HomeAgent}
+\begin{lstlisting}[language=Python]
+class HomeAgent {
+	
+	List mobileagents;	# list contains ip, mac 
+				#addresses pair of mobile nodes
+	
+	ICMPv6Handler ihandler;
+	
+	def _handle_Binding_Updates(Ethernet ethpkt);
+	
+}
+\end{lstlisting}
+
+\begin{algorithm}
+	\caption{\_handle\_Binding\_Updates(PacketInEvent event)}
+	\begin{algorithmic}
+		\IF {$alternateCareofAddrsExist(ippkt)$}
+			\STATE $caddrs = extractAltCareofAddresses(ippkt)$
+		\ELSE 
+			\STATE $caddrs = new\ List(ippkt.source)$
+		\ENDIF
+		\STATE $homeaddr = getHomeaddrFromHomeaddrOption(ippkt)$
+		\STATE $mnReachable = ihandler.isHostRechable(homeaddr, event.dpid, event.port)$
+		\STATE $lifetime = extractLifeTime(ippkt)$
+		%\IF {$lifetime > 0\ \AND\ \NOT\ mnReachable$}
+		%\ELSE 
+		%\ENDIF
+	\end{algorithmic}
+\end{algorithm}
+
+%\begin{algorithm}
+%	\caption{\_handle\_Binding\_Updates(IPv6 ippkt)}
+%	\begin{algorithmic}[1]
+%		\STATE $homeaddress = extractHomeAddress(ippkt)$
+%		\STATE $careofaddress = extractAltCareofAddress(ippkt)$
+%		\IF {$careofaddress\ \textbf{is}\ \textbf{None}$}
+%			\STATE $careofaddress = ippkt.source$
+%		\ENDIF
+%		\STATE $lifetime = extractLifeTime(ippkt)$
+%		\IF {$lifetime == 0$}
+%			\STATE $rechable = icmphandler.isHostRechable()$
+%		\ELSE 
+%		\ENDIF
+%	\end{algorithmic}
+%\end{algorithm}
+
+\section{LocalNetwork}	
+\begin{lstlisting}[language=Python]
+class LocalNetwork {
+
+	Map<long, Switch> switchlist 	#Each object in the list represents 
+					#one physical switch in the network
+	Graph topology;			#Topology of the network
+	Graph shortestpaths;		#All pairs shortest paths
+	
+	#############################################
+	# The function handles ConnectionUp events. #
+	# This event raised when the controller has #
+	# detected a new switch in the network.     #
+	#############################################
+	def _handle_ConnectionUp(Event event);
+	
+	##################################################
+	# The function handles ConnectionDown events.	 #
+	# This event raised when the controller has fa-	 #
+	# iled to detect existing switch in the network. #
+	# It removes the corresponding switch object and #
+	# edges connected to the object.                 #
+	##################################################
+	def _handle_ConnectionDown(Event event);
+	
+	##################################################
+	# The fucntion handles link event which is rais- # 
+	# ed on detection of link between two switches.  #
+	# if link_added flag has set it adds bidirecti-  #
+	# onal link between two switches in the graph.   #
+	# else it remove bidirection link between two	 #
+	# switches in graph.                             #
+	##################################################
+	def _handle_LinkEvent(LinkEvent event);
+
+	#################################################
+	#  The event raised when the controller has re- #
+	# ceived the PortStatus message. The message    #
+	# contains configuration of a specific port of  #
+	# a switch. On receiving the message, it add    #
+	# portnumber, mac address pair to corresponding #
+	# switch object.                                #
+	#################################################
+	def _handle_PortStatus(PortStatusEvent event);
+	
+	################################################
+	# The function returns the switch object       #
+	################################################
+	def getSwitch(String dpid);
+	
+	##################################################
+	# The function returns the set of Switch objects #
+	##################################################
+	def getPath(long srcDPID, long dstDPID);
+	
+	#############################################
+	# The function calculate all pairs shortest #
+	# paths from the topology object.           #
+	#############################################
+	def floyd_warshall_algorithm();
+	
+}
+	\end{lstlisting}
+	
+	
+	\begin{algorithm}
+		\caption{\_handle\_ConnectionUp(Event event)}
+		\begin{algorithmic}[1]
+			\STATE $switch \leftarrow new Switch(event.dpid, event.connection, "switch.conf")$
+			\STATE $switchlist.append(switch)$
+			\STATE $topology.addNode(event.dpid)$
+		\end{algorithmic}
+	\end{algorithm}
+	
+	\begin{algorithm}
+		\caption{\_handle\_ConnectionDown(Event event)}
+		\begin{algorithmic}[1]
+			\STATE $adjlist \leftarrow topology.getAdjList(event.dpid)$
+			\STATE $switch \leftarrow switchlist.get(event.dpid)$
+			\STATE $switch.deleted \leftarrow \TRUE$
+			\STATE $switchlist.remove(event.dpid)$
+			\STATE $topology.removeNode(event.dpid)$
+			\FORALL {dpid \textbf{in} adjlist}
+				\STATE $topology.removeLink(dpid, event.dpid)$
+			\ENDFOR
+			\STATE $floyd\_warshall\_algorithm()$
+		\end{algorithmic}
+	\end{algorithm}
+	
+	\begin{algorithm}
+		\caption{\_handle\_LinkEvent(LinkEvent event)}
+		\begin{algorithmic}[1]
+			\IF {event.linkAdded}
+				\IF {\NOT topology.hasEdge(event.dpid, event.dpid2)}
+					\STATE $topology.addLink(event.dpid1, event.dpid2, event.port1)$
+					\STATE $topology.addLink(event.dpid2, event.dpid2, event.port2)$
+					\STATE $floyd\_warshall\_algorithm()$
+				\ENDIF
+			\ELSE
+				\STATE $topology.removeLink(event.dpid1, event.dpid2)$
+				\STATE $topology.removeLink(evnet.dpid2, event.dpid1)$
+				\STATE $floyd\_warshall\_algorithm()$
+			\ENDIF
+		\end{algorithmic}
+	\end{algorithm}
+	
+	\begin{algorithm}
+		\caption{\_handle\_PortStatus(PortStatusEvent event)}
+		\begin{algorithmic}[1]
+			\STATE $switch \leftarrow switchlist.get(event.dpid)$
+			\STATE $switch.addPort(event.portnum, event.mac, event.porttype)$
+		\end{algorithmic}
+	\end{algorithm}
+	
+	
+	\begin{algorithm}
+		\caption{getPath(long srcDPID, long dstDPID)}
+		\begin{algorithmic}[1]
+			\STATE $path \leftarrow []$
+			\REPEAT
+				\STATE $path.append(switchlist.get(srcDPID))$
+				\STATE $srcDPID \leftarrow shortestpaths.getNextNode(srcDPID, dstDPID)$
+			\UNTIL{srcDPID = dstDPID}
+			\RETURN $path$
+		\end{algorithmic}
+	\end{algorithm}
+	
+\section{ICMPv6Handler}
+\begin{lstlisting}[language=Python]
+class ICMPv6Handler {
+	
+	Address myaddress;	# addresses represented by this object 
+				# is considered as its own addresses
+	
+	HostDb hostdb;		# The object contains list hosts and its 
+				#positions in the network
+	
+	##############################################################
+	# The definition uses neighbour solicitation message to refr-#
+	# esh entries in the hostdb object as well as send neighbour #
+	# advertisement for addresess represented by myaddress object#
+	##############################################################
+	def _handle_Neighbour_Solicitation(icmpv6msg);
+	
+	################################################
+	# The definition uses neighbour advertisement  #
+	# messages for refresh host entries hostdb.    #
+	################################################
+	def _handle_Neighbour_Advertisement(icmpv6msg);
+	
+	################################################
+	# The definition uses router advertisement to  #
+	# learn edge routers connected to the network. #
+	################################################
+	def _handle_Router_Advertisement(icmpv6msg);
+	
+	##############################################################
+	# The definition sends neighbour solicitation message to the #
+	# target ip with source IP is default ip in myaddress object #
+	#  and its corresponding mac address is source mac. It sends #
+	# message three times in exponential backoff time, if it re- #
+	#  ceived reply at lease one time it returns true else false #
+	##############################################################
+	def isHostReachable(targetIP);
+	
+}
+\end{lstlisting}
+
+\begin{algorithm}
+	\caption{isHostReachable(targetIP)}
+	\begin{algorithmic}[1]
+		\STATE $srcip \leftarrow myaddress.defaultIP$
+		\STATE $srcmac \leftarrow myaddress.getMac(srcip)$
+		\STATE $waittime \leftarrow 1$
+		\STATE $hostentry \leftarrow hostdb.getEntrybyIP(targetIP)$
+		\FOR {$i = 0\ \TO\ 3$}
+			\STATE $time \leftarrow new\ Date()$
+			\STATE $hostentry[lastrefreshed] \leftarrow time$
+			\STATE $sendNeighbourSolicitation(srcip, srcmac, targetIP)$
+			\STATE $wait(waittime)$
+			\IF {$abs(hostentry[lastrefreshed] - time) \leq waittime$}
+				\RETURN \TRUE
+			\ELSE
+				\STATE $waittime \leftarrow waittime \times 2$
+			\ENDIF
+		\ENDFOR
+		\RETURN \FALSE
+	\end{algorithmic}
+\end{algorithm}
+	
+\end{document}
