@@ -64,5 +64,5 @@ class HostDB:
 	
 	def clean(self):
 		curtime = time.time()
-		hosts = [hostentry for hostentry in self.hostentries if ((curtime - hostentry[-2]) < hostentry[-3])]
+		hosts = [hostentry for hostentry in self.hostentries if ((curtime < hostentry[-2]) or ((curtime - hostentry[-2]) < hostentry[-3]))]
 		self.hostentries = hosts
