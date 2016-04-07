@@ -49,6 +49,34 @@ class Network:
 			self.topology[event.link.dpid1][dpid2index] = None
 			self.topology[event.link.dpid2][dpid1index] = None
 			floyd_warshall_algorithm()
-	
+	def __get_init_Cost_and_Path_Matrices(self):
+		costmatrix = {}
+		pathmatrix = {}
+		for key in self.topology.keys():
+			costadjlist = []
+			pathadjlist = []
+			for value in self.topology[key]:
+				pathadjlist.append(None)
+				if(value is not None):
+					costadjlist.append(1)
+				else:
+					costadjlist.append(0xFFFFFFFF)
+			costmatrix[key] = costadjlist
+			pathmatrix[key] = pathadjlist
+		return costmatrix, pathmatrix
 	def floyd_warshall_algorithm():
-		
+		costmatrix, pathmatrix = __get_init_Cost_and_Path_Matrices()
+		stageindex = 0
+		for stage in self.dpidlist:
+			stageadjlist = costmatrix[stage]
+			for node in self.dpidlist:
+				nodeadjlist = costmatrix[node]
+				neighbourindex = 0
+				for neighbour in self.dpidlist:
+					curstagepathcost = nodeadjlist[stageindex] + stageadjlist[neighbourindex]
+					if(curstagepathcost < nodeadjlist[neighbourindex]):
+						nodeadjlist[neighbourindex] = curstagepathcost
+						pathmatrix[node][neighbourindex] = stage
+					neighbourindex += 1
+			stageindex += 1	
+		self.pathgraph = pathmatrix
