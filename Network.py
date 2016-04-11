@@ -1,4 +1,8 @@
-class Network:
+import pox.openflow.discovery as discovery
+
+import HostDBEvents
+
+class Network (HostDBEvents):
 	"""
 	The logical representation of Network
 	"""
@@ -35,6 +39,8 @@ class Network:
 		floyd_warshall_algorithm()
 	
 	def _handle_LinkEvent(self, event):
+		dpid2index = None
+		dpid1index = None
 		try:
 			dpid2index = self.dpidlist.index(event.link.dpid2)
 			dpid1index = self.dpidlist.index(event.link.dpid1)
@@ -49,6 +55,7 @@ class Network:
 			self.topology[event.link.dpid1][dpid2index] = None
 			self.topology[event.link.dpid2][dpid1index] = None
 			floyd_warshall_algorithm()
+	
 	def __get_init_Cost_and_Path_Matrices(self):
 		costmatrix = {}
 		pathmatrix = {}
@@ -64,6 +71,7 @@ class Network:
 			costmatrix[key] = costadjlist
 			pathmatrix[key] = pathadjlist
 		return costmatrix, pathmatrix
+	
 	def floyd_warshall_algorithm():
 		costmatrix, pathmatrix = __get_init_Cost_and_Path_Matrices()
 		stageindex = 0
@@ -80,3 +88,26 @@ class Network:
 					neighbourindex += 1
 			stageindex += 1	
 		self.pathgraph = pathmatrix
+	
+	def getPath(self, srcdpid, dstdpid):
+		try:
+			dstdpidIndex = self.dpidlist.index(dstdpid)
+			path = []
+			while(srcdpid != dstdpid):
+				path.append(self.switchlist[srcdpid])
+				srcdpid = self.pathgraph[srcdpid][dstdpidIndex]
+			path.append(self.switchlist[dstdpid])
+			return path
+		except Exception:
+			return None
+	
+	def hostAdded(self, hostentry):
+		pass
+	
+	def hostUpdated(self, oldentry, updatedentry):
+		hostRemoved(oldentry)
+		hostAdded(updatedentry)
+	
+	def hostRemoved(self, hostentry):
+		switch = self.switchlist[hostentry[2]]
+		switch.removeFlowRule(hostentry[0], hostentry[1])
